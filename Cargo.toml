@@ -6,3 +6,9 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.102"
 clap = { version = "4.6.0", features = ["derive"] }
+itertools = "0.14.0"
+log = "0.4.29"
+md5 = "0.8.0"
+sha1 = "0.10.6"
+sha2 = "0.10.9"
+simple_logger = "5.2.0"
