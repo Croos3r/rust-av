@@ -1,5 +1,5 @@
 use std::{
-    fmt::{Display, write},
+    fmt::Display,
     path::{Path, PathBuf},
     process::ExitCode,
 };
