@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use log::log;
 use std::{fmt::Display, path::PathBuf};
 
 use crate::MalwareOracle;
@@ -26,7 +27,12 @@ pub(crate) fn generate_report_for_scans(scans: Vec<(PathBuf, ScanStatus)>) -> us
     let unsure_count = scan_counts.get(&ScanStatus::Unsure).unwrap_or(&0usize);
     let malware_count = scans.len() - (clean_count + unsure_count);
 
-    log::info!(
+    log!(
+        if malware_count != 0 {
+            log::Level::Warn
+        } else {
+            log::Level::Info
+        },
         "Scanned {} entries ({} clean(s), {} unsure(s), {} malware(s)):",
         scans.len(),
         clean_count,
@@ -34,7 +40,14 @@ pub(crate) fn generate_report_for_scans(scans: Vec<(PathBuf, ScanStatus)>) -> us
         malware_count
     );
     for (path, scan_status) in scans.iter().sorted_by_key(|(_, status)| status) {
-        log::info!("[{scan_status}] {}", path.display());
+        log!(
+            match scan_status {
+                ScanStatus::Clean => log::Level::Info,
+                _ => log::Level::Warn,
+            },
+            "[{scan_status}] {}",
+            path.display()
+        );
     }
 
     malware_count

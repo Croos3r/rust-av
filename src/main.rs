@@ -1,9 +1,10 @@
 use std::{
+    fmt::{Display, write},
     path::{Path, PathBuf},
     process::ExitCode,
 };
 
-use anyhow::Ok;
+use anyhow::Context;
 use clap::Parser;
 use malware_oracle::MalwareOracle;
 use scan::{generate_report_for_scans, scan_contents};
@@ -26,18 +27,66 @@ struct Arguments {
     file_or_directory_paths: Vec<PathBuf>,
 }
 
-fn main() -> anyhow::Result<ExitCode> {
+fn init_logger() {
     SimpleLogger::new()
         .with_colors(true)
+        .with_level(log::LevelFilter::Warn)
         .env()
         .with_local_timestamps()
         .init()
         .unwrap();
-    let args = Arguments::parse();
+}
 
-    let oracle = TextFileDatabase::new(Path::new("malwares.txt"))?;
+fn main() -> ExitCode {
+    init_logger();
 
-    let contents = load_contents_for_paths(args.file_or_directory_paths)?;
+    match run() {
+        Ok(code) => code,
+        Err(err) => {
+            log::error!("{err:#}");
+            err.exit_code
+        }
+    }
+}
+
+#[derive(Debug)]
+struct RustAVError {
+    error: anyhow::Error,
+    exit_code: ExitCode,
+}
+
+impl RustAVError {
+    fn new(error: anyhow::Error, exit_code: ExitCode) -> Self {
+        Self { error, exit_code }
+    }
+
+    fn factory_for_code(exit_code: u8) -> impl FnOnce(anyhow::Error) -> Self {
+        move |error| Self::new(error, exit_code.into())
+    }
+}
+
+impl From<anyhow::Error> for RustAVError {
+    fn from(value: anyhow::Error) -> Self {
+        Self::new(value, 1.into())
+    }
+}
+
+impl Display for RustAVError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#}", self.error)
+    }
+}
+
+fn run() -> Result<ExitCode, RustAVError> {
+    let args = Arguments::try_parse()
+        .context("Could not parse arguments")
+        .map_err(RustAVError::factory_for_code(2))?;
+
+    let oracle = TextFileDatabase::new(Path::new("malwares.txt"))
+        .map_err(RustAVError::factory_for_code(3))?;
+
+    let contents = load_contents_for_paths(args.file_or_directory_paths)
+        .map_err(RustAVError::factory_for_code(4))?;
     log::info!(
         "Got contents of {} final entries, scanning for malware...",
         contents.len()
@@ -46,7 +95,11 @@ fn main() -> anyhow::Result<ExitCode> {
     let scans = scan_contents(&oracle, contents);
     log::info!("Finished scanning, generating report...");
 
-    generate_report_for_scans(scans);
+    let malware_found_count = generate_report_for_scans(scans);
 
-    Ok(ExitCode::from(0))
+    Ok(if malware_found_count > 0 {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    })
 }
