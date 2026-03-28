@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use log::log;
+use rayon::prelude::*;
 use std::{fmt::Display, path::PathBuf};
 
 use crate::MalwareOracle;
@@ -58,7 +59,7 @@ pub(crate) fn scan_contents(
     contents: Vec<(PathBuf, Vec<u8>)>,
 ) -> Vec<(PathBuf, ScanStatus)> {
     contents
-        .into_iter()
+        .into_par_iter()
         .map(|(file_path, content)| (file_path, oracle.is_malware(&content)))
         .collect()
 }
