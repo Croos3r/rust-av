@@ -2,13 +2,14 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use itertools::Itertools;
+use rayon::prelude::*;
 
 pub(crate) fn load_contents_for_paths(
     paths: Vec<PathBuf>,
 ) -> anyhow::Result<Vec<(PathBuf, Vec<u8>)>> {
     log::info!("Reading contents of {} entries...", paths.len());
     paths
-        .into_iter()
+        .into_par_iter()
         .map(|path| load_content(&path))
         .collect::<anyhow::Result<Vec<_>>>()
         .map(|res| res.into_iter().flatten().collect_vec())
@@ -41,14 +42,13 @@ fn load_directory_contents(dir_path: &Path) -> anyhow::Result<Vec<(PathBuf, Vec<
     log::info!("Reading directory entries of {}", dir_path.display());
     let dir_reader = dir_path
         .read_dir()
-        .context(format!("Could not read directory {}", dir_path.display()))?;
+        .context(format!("Could not read directory {}", dir_path.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .context("Could not read dir entry")?;
 
     dir_reader
-        .map(|dir_entry| {
-            let dir_entry = dir_entry.context("Could not read dir entry")?;
-            let contents = load_content(&dir_entry.path());
-            contents
-        })
+        .into_par_iter()
+        .map(|dir_entry| load_content(&dir_entry.path()))
         .collect::<anyhow::Result<Vec<_>>>()
         .map(|res| res.into_iter().flatten().collect_vec())
 }
