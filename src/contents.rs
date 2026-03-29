@@ -1,12 +1,18 @@
-use std::path::{Path, PathBuf};
+use std::{
+    error::Error,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, bail};
 use itertools::Itertools;
 use rayon::prelude::*;
 
-pub(crate) fn load_contents_for_paths(
+pub(crate) fn load_contents_for_paths<O: TryFrom<Vec<u8>> + Send>(
     paths: Vec<PathBuf>,
-) -> anyhow::Result<Vec<(PathBuf, Vec<u8>)>> {
+) -> anyhow::Result<Vec<(PathBuf, O)>>
+where
+    <O as TryFrom<Vec<u8>>>::Error: Send + Sync + Error + 'static,
+{
     log::info!("Reading contents of {} entries...", paths.len());
     paths
         .into_par_iter()
@@ -16,7 +22,12 @@ pub(crate) fn load_contents_for_paths(
         .context("Could not read all contents")
 }
 
-fn load_content(file_path: &Path) -> anyhow::Result<Vec<(PathBuf, Vec<u8>)>> {
+pub(crate) fn load_content<O: TryFrom<Vec<u8>> + Send>(
+    file_path: &Path,
+) -> anyhow::Result<Vec<(PathBuf, O)>>
+where
+    <O as TryFrom<Vec<u8>>>::Error: Send + Sync + Error + 'static,
+{
     if file_path.is_dir() {
         log::info!(
             "Loading directory {} files' contents...",
@@ -38,7 +49,12 @@ fn load_content(file_path: &Path) -> anyhow::Result<Vec<(PathBuf, Vec<u8>)>> {
     }
 }
 
-fn load_directory_contents(dir_path: &Path) -> anyhow::Result<Vec<(PathBuf, Vec<u8>)>> {
+pub(crate) fn load_directory_contents<O: TryFrom<Vec<u8>> + Send>(
+    dir_path: &Path,
+) -> anyhow::Result<Vec<(PathBuf, O)>>
+where
+    <O as TryFrom<Vec<u8>>>::Error: Send + Sync + Error + 'static,
+{
     log::info!("Reading directory entries of {}", dir_path.display());
     let dir_reader = dir_path
         .read_dir()
@@ -53,9 +69,20 @@ fn load_directory_contents(dir_path: &Path) -> anyhow::Result<Vec<(PathBuf, Vec<
         .map(|res| res.into_iter().flatten().collect_vec())
 }
 
-fn load_file_content(file_path: &Path) -> anyhow::Result<(PathBuf, Vec<u8>)> {
+pub(crate) fn load_file_content<O: TryFrom<Vec<u8>> + Send>(
+    file_path: &Path,
+) -> anyhow::Result<(PathBuf, O)>
+where
+    <O as TryFrom<Vec<u8>>>::Error: Send + Sync + Error + 'static,
+{
     log::info!("Reading file {}", file_path.display());
     std::fs::read(file_path)
         .context(format!("Could not read {}", file_path.display()))
         .map(|content| (file_path.to_path_buf(), content))
+        .and_then(|(file_path, content)| {
+            content
+                .try_into()
+                .context("Could not convert to requested type")
+                .map(|content| (file_path, content))
+        })
 }
