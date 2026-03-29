@@ -6,12 +6,14 @@ use std::{
 
 use anyhow::Context;
 use clap::Parser;
+use itertools::Itertools;
 use malware_oracle::MalwareOracle;
 use scan::{generate_report_for_scans, scan_contents};
 use simple_logger::SimpleLogger;
 
 use crate::{
-    contents::load_contents_for_paths, malware_oracle::text_file_database::TextFileDatabase,
+    contents::load_contents_for_paths,
+    malware_oracle::{text_file_database::TextFileDatabase, yara::Yara},
 };
 
 mod contents;
@@ -82,8 +84,10 @@ fn run() -> Result<ExitCode, RustAVError> {
         .context("Could not parse arguments")
         .map_err(RustAVError::factory_for_code(2))?;
 
-    let oracle = TextFileDatabase::new(Path::new("malwares.txt"))
-        .map_err(RustAVError::factory_for_code(3))?;
+    let tfd_oracle = TextFileDatabase::new(Path::new("malwares.txt"));
+    let yara_oracle = Yara::new();
+    let tfd_oracle = tfd_oracle.map_err(RustAVError::factory_for_code(3))?;
+    let yara_oracle = yara_oracle.map_err(RustAVError::factory_for_code(3))?;
 
     let contents = load_contents_for_paths(args.file_or_directory_paths)
         .map_err(RustAVError::factory_for_code(4))?;
@@ -92,7 +96,10 @@ fn run() -> Result<ExitCode, RustAVError> {
         contents.len()
     );
 
-    let scans = scan_contents(&oracle, contents);
+    let scans = scan_contents(&tfd_oracle, contents.clone())
+        .into_iter()
+        .chain(scan_contents(&yara_oracle, contents))
+        .collect_vec();
     log::info!("Finished scanning, generating report...");
 
     let malware_found_count = generate_report_for_scans(scans);
